@@ -51,7 +51,7 @@ func main() {
 		return
 	}
 
-	configFile, _ := os.Open("conf.json")
+	configFile, _ := os.Open("/home/gouser/work/src/github.com/javifr/s3zipper/conf.json")
 	decoder := json.NewDecoder(configFile)
 	err := decoder.Decode(&config)
 	if err != nil {
@@ -94,6 +94,8 @@ func parseFileDates(files []*RedisFile) {
 }
 
 func initAwsBucket() {
+
+					fmt.Println("Initializing aws buccket bear!", config.Port)
 	expiration := time.Now().Add(time.Hour * 1)
 	auth, err := aws.GetAuth(config.AccessKey, config.SecretKey, "", expiration) //"" = token which isn't needed
 	if err != nil {
@@ -104,20 +106,33 @@ func initAwsBucket() {
 }
 
 func InitRedis() {
+
+  fmt.Println("Initializin redis connection!")
+
 	redisPool = &redigo.Pool{
-		MaxIdle:     10,
-		IdleTimeout: 1 * time.Second,
-		Dial: func() (redigo.Conn, error) {
-			return redigo.Dial("tcp", config.RedisServerAndPort)
-		},
-		TestOnBorrow: func(c redigo.Conn, t time.Time) (err error) {
-			_, err = c.Do("PING")
-			if err != nil {
-				panic("Error connecting to redis")
-			}
-			return
-		},
-	}
+        MaxIdle: 3,
+        IdleTimeout: 240 * time.Second,
+        Dial: func () (redigo.Conn, error) {
+            c, err := redigo.Dial("tcp", config.RedisServerAndPort)
+            if err != nil {
+								fmt.Println("Fucked up connection to redis!", err)
+                return nil, err
+            }
+            if _, err := c.Do("AUTH", config.RedisPassword); err != nil {
+                c.Close()
+                return nil, err
+            }
+            return c, err
+        },
+        TestOnBorrow: func(c redigo.Conn, t time.Time) error {
+            _, err := c.Do("PING")
+						if err != nil {
+							panic("Error connecting to redis")
+						}
+            return err
+        },
+    }
+
 }
 
 // Remove all other unrecognised characters apart from
@@ -216,6 +231,8 @@ func handler(w http.ResponseWriter, r *http.Request) {
 				log.Printf("Error downloading \"%s\" - %s", file.S3Path, err.Error())
 			}
 			continue
+		}else{
+			fmt.Println("FILE FOUND: ", rdr)
 		}
 
 		// Build a good path for the file within the zip
