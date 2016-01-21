@@ -222,8 +222,10 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 		// Read file from S3, log any errors
 		rdr, err := aws_bucket.GetReader(file.S3Path)
-		fmt.Println("AWS GET READ RDR: ", rdr)
-		fmt.Println("AWS GET READ ERR: ", err)
+		// fmt.Println("AWS GET READ RDR: ", rdr)
+		if err != nil{
+			fmt.Println("AWS GET READ ERR: ", err)
+		}
 		if err != nil {
 			switch t := err.(type) {
 			case *s3.Error:
