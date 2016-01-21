@@ -222,14 +222,18 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 		// Read file from S3, log any errors
 		rdr, err := aws_bucket.GetReader(file.S3Path)
+		fmt.Println("AWS GET READ RDR: ", rdr)
+		fmt.Println("AWS GET READ ERR: ", err)
 		if err != nil {
 			switch t := err.(type) {
 			case *s3.Error:
 				if t.StatusCode == 404 {
 					log.Printf("File not found. %s", file.S3Path)
+  				fmt.Println("File not found. %s", file.S3Path)
 				}
 			default:
 				log.Printf("Error downloading \"%s\" - %s", file.S3Path, err.Error())
+				fmt.Println("Error downloading \"%s\" - %s", file.S3Path, err.Error())
 			}
 			continue
 		}else{

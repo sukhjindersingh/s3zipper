@@ -1,9 +1,9 @@
 {
-	"AccessKey": "key",
-	"SecretKey": "key",
-	"Bucket": "bucket",
-	"Region": "us-east-1",
-	"RedisServerAndPort": "127.0.0.1:6379",
-  "RedisPassword": "XXXXXXX",
-	"Port": 8000
+"AccessKey":"XXXXXXX",
+"SecretKey":"xxxxxxxx",
+"Bucket":"loyal-guru-default",
+"Region":"us-east-1",
+"RedisServerAndPort":"localhost:6384",
+"RedisPassword":"XXXXXXXX",
+"Port":8088
 }
