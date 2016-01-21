@@ -26,6 +26,7 @@ type Configuration struct {
 	Bucket             string
 	Region             string
 	RedisServerAndPort string
+	RedisPassword      string
 	Port               int
 }
 
@@ -78,24 +79,24 @@ func test() {
 		err = errors.New("Error decoding json: " + jsonData)
 	}
 
-	parseFileDates(files)
+	// parseFileDates(files)
 }
 
-func parseFileDates(files []*RedisFile) {
-	layout := "2006-01-02T15:04:05Z"
-	for _, file := range files {
-		t, err := time.Parse(layout, file.Modified)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-		file.ModifiedTime = t
-	}
-}
+// func parseFileDates(files []*RedisFile) {
+// 	layout := "2006-01-02T15:04:05Z"
+// 	for _, file := range files {
+// 		t, err := time.Parse(layout, file.Modified)
+// 		if err != nil {
+// 			fmt.Println(err)
+// 			continue
+// 		}
+// 		file.ModifiedTime = t
+// 	}
+// }
 
 func initAwsBucket() {
 
-					fmt.Println("Initializing aws buccket bear!", config.Port)
+	fmt.Println("Initializing aws buccket bear!", config.Port)
 	expiration := time.Now().Add(time.Hour * 1)
 	auth, err := aws.GetAuth(config.AccessKey, config.SecretKey, "", expiration) //"" = token which isn't needed
 	if err != nil {
@@ -171,7 +172,7 @@ func getFilesFromRedis(ref string) (files []*RedisFile, err error) {
 	}
 
 	// Convert mofified date strings to time objects
-	parseFileDates(files)
+	// parseFileDates(files)
 
 	return
 }
