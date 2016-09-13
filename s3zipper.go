@@ -26,7 +26,6 @@ type Configuration struct {
 	Bucket             string
 	Region             string
 	RedisServerAndPort string
-	RedisPassword      string
 	Port               int
 }
 
@@ -35,15 +34,16 @@ var aws_bucket *s3.Bucket
 var redisPool *redigo.Pool
 
 type RedisFile struct {
-	FileName string
-	Folder   string
-	S3Path   string
-	// Optional - we use are Teamwork.com but feel free to rmove
-	FileId       int64 `json:",string"`
-	ProjectId    int64 `json:",string"`
-	ProjectName  string
-	Modified     string
-	ModifiedTime time.Time
+	FileName  string
+	Folder    string
+	S3Path    string
+	DataValue string
+	//// Optional - we use are Teamwork.com but feel free to rmove
+	//FileId       int64 `json:",string"`
+	//ProjectId    int64 `json:",string"`
+	//ProjectName  string
+	//Modified     string
+	//ModifiedTime time.Time
 }
 
 func main() {
@@ -52,7 +52,7 @@ func main() {
 		return
 	}
 
-	configFile, _ := os.Open("/home/gouser/work/src/github.com/javifr/s3zipper/conf.json")
+	configFile, _ := os.Open("conf.json")
 	decoder := json.NewDecoder(configFile)
 	err := decoder.Decode(&config)
 	if err != nil {
@@ -64,7 +64,7 @@ func main() {
 
 	fmt.Println("Running on port", config.Port)
 	http.HandleFunc("/", handler)
-	http.ListenAndServe(":"+strconv.Itoa(config.Port), nil)
+	http.ListenAndServe(":" + strconv.Itoa(config.Port), nil)
 }
 
 func test() {
@@ -79,24 +79,22 @@ func test() {
 		err = errors.New("Error decoding json: " + jsonData)
 	}
 
-	// parseFileDates(files)
+	//parseFileDates(files)
 }
 
-// func parseFileDates(files []*RedisFile) {
-// 	layout := "2006-01-02T15:04:05Z"
-// 	for _, file := range files {
-// 		t, err := time.Parse(layout, file.Modified)
-// 		if err != nil {
-// 			fmt.Println(err)
-// 			continue
-// 		}
-// 		file.ModifiedTime = t
-// 	}
-// }
+//func parseFileDates(files []*RedisFile) {
+//	layout := "2006-01-02T15:04:05Z"
+//	for _, file := range files {
+//		t, err := time.Parse(layout, file.Modified)
+//		if err != nil {
+//			fmt.Println(err)
+//			continue
+//		}
+//		file.ModifiedTime = t
+//	}
+//}
 
 func initAwsBucket() {
-
-	fmt.Println("Initializing aws buccket bear!", config.Port)
 	expiration := time.Now().Add(time.Hour * 1)
 	auth, err := aws.GetAuth(config.AccessKey, config.SecretKey, "", expiration) //"" = token which isn't needed
 	if err != nil {
@@ -107,33 +105,20 @@ func initAwsBucket() {
 }
 
 func InitRedis() {
-
-  fmt.Println("Initializin redis connection!")
-
 	redisPool = &redigo.Pool{
-        MaxIdle: 3,
-        IdleTimeout: 240 * time.Second,
-        Dial: func () (redigo.Conn, error) {
-            c, err := redigo.Dial("tcp", config.RedisServerAndPort)
-            if err != nil {
-								fmt.Println("Fucked up connection to redis!", err)
-                return nil, err
-            }
-            if _, err := c.Do("AUTH", config.RedisPassword); err != nil {
-                c.Close()
-                return nil, err
-            }
-            return c, err
-        },
-        TestOnBorrow: func(c redigo.Conn, t time.Time) error {
-            _, err := c.Do("PING")
-						if err != nil {
-							panic("Error connecting to redis")
-						}
-            return err
-        },
-    }
-
+		MaxIdle:     10,
+		IdleTimeout: 1 * time.Second,
+		Dial: func() (redigo.Conn, error) {
+			return redigo.Dial("tcp", config.RedisServerAndPort)
+		},
+		TestOnBorrow: func(c redigo.Conn, t time.Time) (err error) {
+			_, err = c.Do("PING")
+			if err != nil {
+				panic("Error connecting to redis")
+			}
+			return
+		},
+	}
 }
 
 // Remove all other unrecognised characters apart from
@@ -151,10 +136,9 @@ func getFilesFromRedis(ref string) (files []*RedisFile, err error) {
 	defer redis.Close()
 
 	// Get the value from Redis
-	result, err := redis.Do("GET", "zip:"+ref)
+	result, err := redis.Do("GET", "zip:" + ref)
 	if err != nil || result == nil {
 		err = errors.New("Access Denied (sorry your link has timed out)")
-		return
 	}
 
 	// Convert to bytes
@@ -172,9 +156,50 @@ func getFilesFromRedis(ref string) (files []*RedisFile, err error) {
 	}
 
 	// Convert mofified date strings to time objects
-	// parseFileDates(files)
+	//parseFileDates(files)
 
 	return
+}
+
+func getCnfFilesFromRedis(cnf string) (CnfDatas []*RedisFile, err error) {
+
+	redis := redisPool.Get()
+	defer redis.Close()
+
+	// Get the value from Redis
+	result, err := redis.Do("GET", "cnf:" + cnf)
+	if err != nil || result == nil {
+		err = errors.New("Conf File Access Denied (sorry your link has timed out)")
+		return
+	}
+
+	// Convert to bytes
+	var resultByte []byte
+	var ok bool
+	if resultByte, ok = result.([]byte); !ok {
+		err = errors.New("Conf File Error converting data stream to bytes")
+		return
+	}
+
+	// Decode JSON
+	err = json.Unmarshal(resultByte, &CnfDatas)
+	if err != nil {
+		err = errors.New("Conf File Error decoding json: " + string(resultByte))
+	}
+
+	return
+}
+
+func slicer(a []*RedisFile, b int) [][]*RedisFile {
+	c := make([][]*RedisFile, 0)
+	for i := 0; i < len(a); i += b {
+		if i + b > len(a) {
+			c = append(c, a[i:])
+		} else {
+			c = append(c, a[i:i + b])
+		}
+	}
+	return c
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
@@ -200,6 +225,22 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	files, err := getFilesFromRedis(ref)
+
+	if err != nil {
+		http.Error(w, err.Error(), 403)
+		log.Printf("%s\t%s\t%s", r.Method, r.RequestURI, err.Error())
+		return
+	}
+
+	// Get "conf" URL parms
+	cnfs, ok := r.URL.Query()["cnf"]
+	if !ok || len(cnfs) < 1 {
+		http.Error(w, "S3 File Zipper. Pass ?cnf= to use.", 500)
+		return
+	}
+
+	cnf := cnfs[0]
+	CnfDatas, err := getCnfFilesFromRedis(cnf)
 	if err != nil {
 		http.Error(w, err.Error(), 403)
 		log.Printf("%s\t%s\t%s", r.Method, r.RequestURI, err.Error())
@@ -207,81 +248,163 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Start processing the response
-	w.Header().Add("Content-Disposition", "attachment; filename=\""+downloadas[0]+"\"")
+	w.Header().Add("Content-Disposition", "attachment; filename=\"" + downloadas[0] + "\"")
 	w.Header().Add("Content-Type", "application/zip")
 
 	// Loop over files, add them to the
 	zipWriter := zip.NewWriter(w)
-	for _, file := range files {
 
+	// We have to set a special flag so zip files recognize utf file names
+	// See http://stackoverflow.com/questions/30026083/creating-a-zip-archive-with-unicode-filenames-using-gos-archive-zip
+
+	for _, CnfData := range CnfDatas {
 		// Build safe file file name
-		safeFileName := makeSafeFileName.ReplaceAllString(file.FileName, "")
-		if safeFileName == "" { // Unlikely but just in case
-			safeFileName = "file"
-		}
-
-		// Read file from S3, log any errors
-		rdr, err := aws_bucket.GetReader(file.S3Path)
-		// fmt.Println("AWS GET READ RDR: ", rdr)
-		if err != nil{
-			fmt.Println("AWS GET READ ERR: ", err)
-		}
-		if err != nil {
-			switch t := err.(type) {
-			case *s3.Error:
-				if t.StatusCode == 404 {
-					log.Printf("File not found. %s", file.S3Path)
-  				fmt.Println("File not found. %s", file.S3Path)
-				}
-			default:
-				log.Printf("Error downloading \"%s\" - %s", file.S3Path, err.Error())
-				fmt.Println("Error downloading \"%s\" - %s", file.S3Path, err.Error())
-			}
-			continue
-		}else{
-			fmt.Println("FILE FOUND: ", rdr)
-		}
+		safeFileName := makeSafeFileName.ReplaceAllString(CnfData.FileName, "")
 
 		// Build a good path for the file within the zip
 		zipPath := ""
-		// Prefix project Id and name, if any (remove if you don't need)
-		if file.ProjectId > 0 {
-			zipPath += strconv.FormatInt(file.ProjectId, 10) + "."
-			// Build Safe Project Name
-			file.ProjectName = makeSafeFileName.ReplaceAllString(file.ProjectName, "")
-			if file.ProjectName == "" { // Unlikely but just in case
-				file.ProjectName = "Project"
-			}
-			zipPath += file.ProjectName + "/"
-		}
+
 		// Prefix folder name, if any
-		if file.Folder != "" {
-			zipPath += file.Folder
+		if CnfData.Folder != "" {
+			zipPath += CnfData.Folder
 			if !strings.HasSuffix(zipPath, "/") {
 				zipPath += "/"
 			}
 		}
 		zipPath += safeFileName
 
-		// We have to set a special flag so zip files recognize utf file names
-		// See http://stackoverflow.com/questions/30026083/creating-a-zip-archive-with-unicode-filenames-using-gos-archive-zip
 		h := &zip.FileHeader{
 			Name:   zipPath,
 			Method: zip.Deflate,
 			Flags:  0x800,
 		}
 
-		if file.Modified != "" {
-			h.SetModTime(file.ModifiedTime)
-		}
-
 		f, _ := zipWriter.CreateHeader(h)
 
-		io.Copy(f, rdr)
-		rdr.Close()
+		r := strings.NewReader(CnfData.DataValue)
+		io.Copy(f, r)
 	}
+
+	sz := len(files);
+	fmt.Println("Total Patches:", sz)
+
+	chunks := slicer(files, 1000)
+
+	fmt.Printf("Total Chunks %v\n", len(chunks))
+
+	for _, f1 := range chunks {
+		initAwsBucket();
+		for _, file := range f1 {
+
+			if file.S3Path == "" {
+				log.Printf("Missing path for file: %v", file)
+				continue
+			}
+
+			// Build safe file file name
+			safeFileName := makeSafeFileName.ReplaceAllString(file.FileName, "")
+			if safeFileName == "" {
+				// Unlikely but just in case
+				safeFileName = "file"
+			}
+
+			// Read file from S3, log any errors
+			rdr, err := aws_bucket.GetReader(file.S3Path)
+			if err != nil {
+				switch t := err.(type) {
+				case *s3.Error:
+					if t.StatusCode == 404 {
+						log.Printf("File not found. %s", file.S3Path)
+					}
+				default:
+					log.Printf("Error downloading \"%s\" - %s", file.S3Path, err.Error())
+				}
+				continue
+			}
+
+			// Build a good path for the file within the zip
+			zipPath := ""
+			// Prefix folder name, if any
+			if file.Folder != "" {
+				zipPath += file.Folder
+				if !strings.HasSuffix(zipPath, "/") {
+					zipPath += "/"
+				}
+			}
+
+			zipPath += safeFileName
+
+			// We have to set a special flag so zip files recognize utf file names
+			// See http://stackoverflow.com/questions/30026083/creating-a-zip-archive-with-unicode-filenames-using-gos-archive-zip
+			h := &zip.FileHeader{
+				Name:   zipPath,
+				Method: zip.Deflate,
+				Flags:  0x800,
+			}
+
+			f, _ := zipWriter.CreateHeader(h)
+
+			io.Copy(f, rdr)
+			rdr.Close()
+		}
+	}
+	//for _, file := range files {
+	//
+	//	if file.S3Path == "" {
+	//		log.Printf("Missing path for file: %v", file)
+	//		continue
+	//	}
+	//
+	//	// Build safe file file name
+	//	safeFileName := makeSafeFileName.ReplaceAllString(file.FileName, "")
+	//	if safeFileName == "" {
+	//		// Unlikely but just in case
+	//		safeFileName = "file"
+	//	}
+	//
+	//	// Read file from S3, log any errors
+	//	rdr, err := aws_bucket.GetReader(file.S3Path)
+	//	if err != nil {
+	//		switch t := err.(type) {
+	//		case *s3.Error:
+	//			if t.StatusCode == 404 {
+	//				log.Printf("File not found. %s", file.S3Path)
+	//			}
+	//		default:
+	//			log.Printf("Error downloading \"%s\" - %s", file.S3Path, err.Error())
+	//		}
+	//		continue
+	//	}
+	//
+	//	// Build a good path for the file within the zip
+	//	zipPath := ""
+	//	// Prefix folder name, if any
+	//	if file.Folder != "" {
+	//		zipPath += file.Folder
+	//		if !strings.HasSuffix(zipPath, "/") {
+	//			zipPath += "/"
+	//		}
+	//	}
+	//
+	//	zipPath += safeFileName
+	//
+	//	// We have to set a special flag so zip files recognize utf file names
+	//	// See http://stackoverflow.com/questions/30026083/creating-a-zip-archive-with-unicode-filenames-using-gos-archive-zip
+	//	h := &zip.FileHeader{
+	//		Name:   zipPath,
+	//		Method: zip.Deflate,
+	//		Flags:  0x800,
+	//	}
+	//
+	//	f, _ := zipWriter.CreateHeader(h)
+	//
+	//	io.Copy(f, rdr)
+	//	rdr.Close()
+	//}
 
 	zipWriter.Close()
 
 	log.Printf("%s\t%s\t%s", r.Method, r.RequestURI, time.Since(start))
 }
+
+
